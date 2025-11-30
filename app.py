@@ -1,6 +1,3 @@
-# SIS-EVA: Streamlit app para Análise de Evasão e Previsão de Ingressantes
-# Leitura automática de arquivos no diretório: discentes-2023.csv, discentes-2024.csv, discentes-2025.csv
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -14,7 +11,7 @@ st.set_page_config(layout="wide", page_title="SIS-EVA | Análise de Evasão e Pr
 
 st.title("SIS-EVA — Análise de Evasão e Previsão de Ingressantes")
 st.markdown(
-    "Aplicação automática que lê todos os arquivos `discentes-YYYY.csv` no diretório do app, consolida os dados e gera indicadores de evasão e previsões de ingressantes por curso."
+    "Aplicação automática que lê todos os arquivos `discentes-YYYY.csv` no diretório do app, consolida os dados e gera indicadores de evasão e previsões de ingressantes por curso. Esses dados foram retirados dos registros fornecidos pela UFRN em `dados.ufrn.br`."
 )
 
 # ----------------- Helpers -----------------
@@ -171,23 +168,23 @@ for curso, group in entrants.groupby(COL_CURSO):
         slope = float(model.coef_[0])
         last_year = int(group[COL_ANO].max())
         last_count = int(group[group[COL_ANO]==group[COL_ANO].max()]['ingressantes'].values[0])
-        preds.append({'curso': curso, 'last_year': last_year, 'last_year_count': last_count, 'pred_next_year': max(0, float(pred)), 'slope': slope, 'years_used': len(years)})
+        preds.append({'curso': curso, 'ano_passado': last_year, 'contagem_ano_passado': last_count, 'pred_proximo_ano': max(0, float(pred)), 'taxa_crescimento': slope, 'anos_usados': len(years)})
     else:
         # insuficiente
         last_year = int(group[COL_ANO].max())
         last_count = int(group[group[COL_ANO]==group[COL_ANO].max()]['ingressantes'].values[0])
-        preds.append({'curso': curso, 'last_year': last_year, 'last_year_count': last_count, 'pred_next_year': np.nan, 'slope': np.nan, 'years_used': len(years)})
+        preds.append({'curso': curso, 'ano_passado': last_year, 'contagem_ano_passado': last_count, 'pred_proximo_ano': np.nan, 'taxa_crescimento': np.nan, 'anos_usados': len(years)})
 
 preds_df = pd.DataFrame(preds)
 merged = preds_df.merge(course_stats.reset_index().rename(columns={COL_CURSO:'curso'}), on='curso', how='left')
-merged['pred_diff'] = merged['pred_next_year'] - merged['last_year_count']
+merged['pred_diff'] = merged['pred_proximo_ano'] - merged['contagem_ano_passado']
 
 st.subheader('Previsões de Ingressantes (regressão linear simples)')
 st.write('Somente cursos com ao menos 2 anos de histórico têm previsão. A previsão é linear e serve como sinal, não como garantia.')
-st.dataframe(merged.sort_values('slope', ascending=False).head(50))
+st.dataframe(merged.sort_values('taxa_crescimento', ascending=False).head(50))
 
-st.write('Top 10 cursos com maior tendência (slope positivo):')
-st.table(merged.dropna(subset=['slope']).sort_values('slope', ascending=False).head(10)[['curso','years_used','last_year','last_year_count','pred_next_year','slope']])
+st.write('Top 10 cursos com maior tendência (taxa de crescimento positiva):')
+st.table(merged.dropna(subset=['taxa_crescimento']).sort_values('taxa_crescimento', ascending=False).head(10)[['curso','anos_usados','ano_passado','contagem_ano_passado','pred_proximo_ano','taxa_crescimento']])
 
 # gráfico interativo por curso
 st.sidebar.header('Explorar curso')
@@ -196,9 +193,9 @@ if curso_sel:
     g = entrants[entrants[COL_CURSO]==curso_sel].sort_values(COL_ANO)
     fig = px.line(g, x=COL_ANO, y='ingressantes', title=f'Ingressantes históricos — {curso_sel}', markers=True)
     row = merged[merged['curso']==curso_sel]
-    if not row.empty and not np.isnan(row['pred_next_year'].values[0]):
-        next_y = int(row['last_year'].values[0]) + 1
-        pred_y = row['pred_next_year'].values[0]
+    if not row.empty and not np.isnan(row['pred_proximo_ano'].values[0]):
+        next_y = int(row['ano_passado'].values[0]) + 1
+        pred_y = row['pred_proximo_ano'].values[0]
         fig.add_scatter(x=[next_y], y=[pred_y], mode='markers+text', name='Predição', text=[f'{pred_y:.0f}'])
     st.plotly_chart(fig, use_container_width=True)
 
@@ -221,7 +218,7 @@ if curso_select:
 st.subheader('Exportar resultados')
 export_df = course_stats.reset_index().rename(columns={COL_CURSO:'curso'})
 if not merged.empty:
-    export_df = export_df.merge(merged[['curso','pred_next_year','slope','years_used','last_year_count','pred_diff']], on='curso', how='left')
+    export_df = export_df.merge(merged[['curso','pred_proximo_ano','taxa_crescimento','anos_usados','contagem_ano_passado','pred_diff']], on='curso', how='left')
 
 buf = io.BytesIO()
 export_df.to_excel(buf, index=False)
